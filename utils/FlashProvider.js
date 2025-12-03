@@ -1,4 +1,14 @@
 const { ethers } = require("hardhat");
+const {
+    emergencyStop,
+    checkCircuitBreaker,
+    validateFlashloanProvider,
+    calculateSafeSlippage,
+    safeApprove,
+    validateTransaction,
+    monitoredTransaction,
+    getSafetyStatus
+} = require('./SafetyWrapper');
 
 // ABIs for various protocols
 const UNISWAP_V3_POOL_ABI = [
@@ -561,11 +571,18 @@ class FlashProvider {
         return null;
     }
 
-    // Execute Uniswap V3 flash swap
+    // Execute Uniswap V3 flash swap with safety measures
     async _executeUniswapV3FlashSwap(poolAddress, amount0, amount1, arbitrageParams) {
         if (!this.signer) {
             throw new Error('Signer is required for flash swap execution');
         }
+
+        // Validate transaction safety
+        validateTransaction({
+            amount: Math.max(amount0.toString(), amount1.toString()) / 1e18, // Convert to USD approximation
+            gasPrice: await this.provider.getGasPrice()
+        });
+
         const poolContract = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, this.signer);
 
         try {
@@ -579,15 +596,17 @@ class FlashProvider {
                 [token0, token1, arbitrageParams.exchanges, arbitrageParams.path, arbitrageParams.caller, arbitrageParams.gasReimbursement]
             );
 
-            // Execute flash swap
-            const tx = await poolContract.flash(
+            // Execute flash swap with monitoring
+            const txPromise = poolContract.flash(
                 arbitrageParams.contractAddress || this.signer.address, // recipient (arbitrage contract)
                 amount0,
                 amount1,
                 data
             );
 
+            const tx = await monitoredTransaction(txPromise, 'Uniswap V3 flash swap');
             const receipt = await tx.wait();
+
             return {
                 success: true,
                 txHash: receipt.transactionHash,
@@ -700,11 +719,21 @@ class FlashProvider {
         }
     }
 
-    // Execute Aave flash loan
+    // Execute Aave flash loan with safety measures
     async _executeAaveFlashLoan(token, amount, arbitrageParams) {
         if (!this.signer) {
             throw new Error('Signer is required for flash loan execution');
         }
+
+        // Validate flashloan provider
+        validateFlashloanProvider(this.protocolAddresses.AAVE.address);
+
+        // Validate transaction safety
+        validateTransaction({
+            amount: amount.toString() / 1e18, // Convert to token amount approximation
+            gasPrice: await this.provider.getGasPrice()
+        });
+
         const aaveContract = new ethers.Contract(
             this.protocolAddresses.AAVE.address,
             AAVE_POOL_ABI,
@@ -721,7 +750,8 @@ class FlashProvider {
             [arbitrageParams.exchanges, arbitrageParams.path, arbitrageParams.caller, arbitrageParams.gasReimbursement]
         );
 
-        const tx = await aaveContract.flashLoan(
+        // Execute with monitoring and safety
+        const txPromise = aaveContract.flashLoan(
             arbitrageParams.contractAddress || this.signer.address, // receiverAddress
             assets,
             amounts,
@@ -731,7 +761,9 @@ class FlashProvider {
             0 // referralCode
         );
 
+        const tx = await monitoredTransaction(txPromise, 'Aave flash loan');
         const receipt = await tx.wait();
+
         return {
             success: true,
             txHash: receipt.transactionHash,
