@@ -157,13 +157,24 @@ async function main() {
         console.log('✅ Bot initialized successfully');
         console.log('');
 
-        // Display bot status
+        // Display comprehensive bot status and safety measures
         const status = bot.getStatus();
-        console.log('📊 BOT STATUS:');
+        console.log('📊 BOT STATUS & SAFETY MEASURES:');
         console.log(`   • Running: ${status.isRunning}`);
         console.log(`   • Min Profit: $${status.currentParameters.minProfitUSD}`);
         console.log(`   • Max Gas Price: ${status.currentParameters.maxGasPrice} gwei`);
         console.log(`   • Scan Interval: ${status.currentParameters.scanInterval}ms`);
+        console.log('');
+
+        // Display safety measures (same format as validation)
+        console.log('🛡️ ACTIVE SAFETY MEASURES:');
+        console.log(`   • Test Mode: ${safetyStatus.testMode.enabled ? 'ENABLED' : 'DISABLED'}`);
+        console.log(`   • Circuit Breaker: ${safetyStatus.circuitBreaker.isActive ? 'ACTIVE' : 'Ready'}`);
+        console.log(`   • Max Trade Size: $${safetyStatus.limits.maxTradeSize}`);
+        console.log(`   • Max Gas Price: ${safetyStatus.limits.maxGasPrice} gwei`);
+        console.log(`   • Slippage Protection: ${safetyStatus.limits.maxSlippage * 100}% maximum`);
+        console.log(`   • Emergency Stop: ${bot.getSafetyStatus().emergencyStopTriggered ? 'ACTIVE' : 'Ready'}`);
+        console.log(`   • Consecutive Failures: ${bot.getSafetyStatus().consecutiveFailures}/${bot.getSafetyStatus().maxConsecutiveFailures}`);
         console.log('');
 
         // Write PID file for process management
